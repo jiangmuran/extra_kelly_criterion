@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>凯利公式计算器</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN (latest stable version) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        /* 计算动画样式 */
+        .spinner {
+            display: none;
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 2rem;
+            height: 2rem;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto py-8">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">凯利公式计算器</h1>
+
+        <!-- 模式选择 -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <label for="mode" class="block text-sm font-medium text-gray-700 mb-2">选择公式模式</label>
+            <select id="mode" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500">
+                <option value="classic">经典凯利公式</option>
+                <option value="extended">扩展凯利公式</option>
+            </select>
+        </div>
+
+        <!-- 输入表单 -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">输入参数</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="p" class="block text-sm font-medium text-gray-700">成功概率 (p, 0-1)</label>
+                    <input type="number" id="p" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500" placeholder="例如 0.6" step="0.01" min="0" max="1" value="0.6">
+                </div>
+                <div>
+                    <label for="q" class="block text-sm font-medium text-gray-700">失败概率 (q = 1 - p)</label>
+                    <input type="number" id="q" class="w-full p-2 border rounded-md bg-gray-100" readonly value="0.4">
+                </div>
+                <div>
+                    <label for="b" class="block text-sm font-medium text-gray-700">成功净收益比例 (b)</label>
+                    <input type="number" id="b" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500" placeholder="例如 1" step="0.01" min="0" value="1">
+                </div>
+                <div id="a-container" class="hidden">
+                    <label for="a" class="block text-sm font-medium text-gray-700">失败损失比例 (a, 0-1)</label>
+                    <input type="number" id="a" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500" placeholder="例如 0.2" step="0.01" min="0" max="1" value="0.2">
+                </div>
+            </div>
+            <button id="calculate" class="mt-4 w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition">计算</button>
+            <div id="loading" class="spinner mt-4"></div>
+        </div>
+
+        <!-- 结果显示 -->
+        <div id="result" class="bg-white shadow-md rounded-lg p-6 mb-6 hidden">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">计算结果</h2>
+            <p id="result-text" class="text-gray-700"></p>
+        </div>
+
+        <!-- 图表 -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">预期对数增长率曲线</h2>
+            <div class="chart-container">
+                <canvas id="growthChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 算法说明 -->
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">算法说明</h2>
+            <div id="explanation" class="text-gray-700">
+                <p><strong>经典凯利公式</strong>：适用于成功赚取固定比例收益、失败全亏的场景。公式为 f = (p b - q) / b，其中 p 是成功概率，q = 1 - p 是失败概率，b 是成功时的净收益比例。目标是最大化财富的对数增长率，确保长期稳定增长。</p>
+                <p><strong>扩展凯利公式</strong>：适用于成功赚取部分收益、失败损失部分的场景，比如投资市场。公式为 f = (p b - q a) / (a b)，其中 a 是失败时的损失比例。公式考虑了更现实的场景，平衡收益和风险。</p>
+                <p>图表展示了预期对数增长率随投入比例 f 的变化，最优 f 点标记为红点。实际使用时，建议保守投入（比如用一半的 f），以应对概率估计的不确定性。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 确保Chart.js加载后执行
+        window.onload = function() {
+            if (typeof Chart === 'undefined') {
+                alert('Chart.js 未能正确加载，请检查网络连接或稍后重试。');
+                return;
+            }
+
+            // 获取DOM元素
+            const modeSelect = document.getElementById('mode');
+            const aContainer = document.getElementById('a-container');
+            const calculateBtn = document.getElementById('calculate');
+            const loadingSpinner = document.getElementById('loading');
+            const resultDiv = document.getElementById('result');
+            const resultText = document.getElementById('result-text');
+            const chartCanvas = document.getElementById('growthChart');
+            const pInput = document.getElementById('p');
+            const qInput = document.getElementById('q');
+            let chart = null;
+
+            // 自动更新 q = 1 - p
+            pInput.addEventListener('input', () => {
+                const p = parseFloat(pInput.value);
+                if (!isNaN(p) && p >= 0 && p <= 1) {
+                    qInput.value = (1 - p).toFixed(2);
+                } else {
+                    qInput.value = '';
+                }
+            });
+
+            // 模式切换
+            modeSelect.addEventListener('change', () => {
+                aContainer.classList.toggle('hidden', modeSelect.value === 'classic');
+            });
+
+            // 计算函数
+            calculateBtn.addEventListener('click', () => {
+                // 显示加载动画
+                loadingSpinner.style.display = 'block';
+                resultDiv.classList.add('hidden');
+                calculateBtn.disabled = true;
+
+                // 模拟计算过程（1秒延迟）
+                setTimeout(() => {
+                    const p = parseFloat(pInput.value);
+                    const b = parseFloat(document.getElementById('b').value);
+                    const a = parseFloat(document.getElementById('a').value) || 1; // 经典模式默认a=1
+
+                    // 输入验证
+                    if (isNaN(p) || p < 0 || p > 1) {
+                        alert('请输入有效的成功概率 (0-1)');
+                        loadingSpinner.style.display = 'none';
+                        calculateBtn.disabled = false;
+                        return;
+                    }
+                    if (isNaN(b) || b <= 0) {
+                        alert('请输入有效的净收益比例 (>0)');
+                        loadingSpinner.style.display = 'none';
+                        calculateBtn.disabled = false;
+                        return;
+                    }
+                    if (modeSelect.value === 'extended' && (isNaN(a) || a <= 0 || a > 1)) {
+                        alert('请输入有效的失败损失比例 (0-1)');
+                        loadingSpinner.style.display = 'none';
+                        calculateBtn.disabled = false;
+                        return;
+                    }
+
+                    // 计算凯利公式
+                    const q = 1 - p;
+                    let f;
+                    if (modeSelect.value === 'classic') {
+                        f = (p * b - q) / b;
+                    } else {
+                        f = (p * b - q * a) / (a * b);
+                    }
+
+                    // 显示结果
+                    const fPercent = (f * 100).toFixed(2);
+                    resultText.innerHTML = `最优投入比例 f = ${fPercent}%`;
+                    if (f > 1) {
+                        resultText.innerHTML += `<br>注意：f > 100%，建议最多投入100%或保守投入（比如50%），以降低风险。`;
+                    } else if (f < 0) {
+                        resultText.innerHTML += `<br>注意：f < 0，说明没有投资优势，建议不投入。`;
+                    } else {
+                        resultText.innerHTML += `<br>建议投入总资金的 ${fPercent}%，以实现长期财富最大化。`;
+                    }
+                    resultDiv.classList.remove('hidden');
+
+                    // 隐藏加载动画
+                    loadingSpinner.style.display = 'none';
+                    calculateBtn.disabled = false;
+
+                    // 绘制图表
+                    drawChart(p, q, b, a, modeSelect.value, f);
+                }, 1000); // 1秒延迟模拟计算
+            });
+
+            // 绘制图表
+            function drawChart(p, q, b, a, mode, optimalF) {
+                const fValues = [];
+                const gValues = [];
+                const maxF = Math.min(1 / a, 2); // 限制f范围，避免1-f a < 0
+                for (let f = 0; f <= maxF; f += 0.01) {
+                    fValues.push(f);
+                    let g;
+                    try {
+                        if (mode === 'classic') {
+                            g = p * Math.log(1 + f * b) + q * Math.log(1 - f);
+                        } else {
+                            g = p * Math.log(1 + f * b) + q * Math.log(1 - f * a);
+                        }
+                        gValues.push(isFinite(g) ? g : null);
+                    } catch (e) {
+                        gValues.push(null); // 处理log(负数)的情况
+                    }
+                }
+
+                // 销毁旧图表
+                if (chart) chart.destroy();
+
+                // 创建新图表
+                chart = new Chart(chartCanvas, {
+                    type: 'line',
+                    data: {
+                        labels: fValues.map(f => (f * 100).toFixed(0) + '%'),
+                        datasets: [
+                            {
+                                label: '预期对数增长率 G(f)',
+                                data: gValues,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                fill: false,
+                                tension: 0.1
+                            },
+                            {
+                                label: '最优 f',
+                                data: [{
+                                    x: optimalF * 100,
+                                    y: p * Math.log(1 + optimalF * b) + q * Math.log(1 - optimalF * (mode === 'classic' ? 1 : a))
+                                }],
+                                type: 'scatter',
+                                pointBackgroundColor: '#ef4444',
+                                pointRadius: 6
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: { display: true, text: '投入比例 f (%)' },
+                                ticks: { maxTicksLimit: 10 }
+                            },
+                            y: {
+                                title: { display: true, text: '预期对数增长率 G(f)' }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const value = context.parsed.y;
+                                        return context.dataset.label + ': ' + (value ? value.toFixed(4) : '无效');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        };
+    </script>
+</body>
+</html>
